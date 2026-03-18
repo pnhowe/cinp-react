@@ -1,3 +1,6 @@
+Deporcated: use the npm version with react, it also has a typescript header
+
+
 CInP client for react
 ======================
 

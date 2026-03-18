@@ -6,10 +6,10 @@
  * Copyright Peter Howe, Floyd Arguello
  * Released under the Apache 2.0 license
  *
- * Last modified 2017-07-12
+ * Last modified 2021-10-14
  */
 
-const uriRegex = /^(\/([a-zA-Z0-9\-_.!~*]+\/)*)([a-zA-Z0-9\-_.!~*]+)?(:([a-zA-Z0-9\-_.!~*\']*:)*)?(\([a-zA-Z0-9\-_.!~*]+\))?$/;
+const uriRegex = /^(\/([a-zA-Z0-9\-_.!~*]+\/)*)([a-zA-Z0-9\-_.!~*]+)?(:([a-zA-Z0-9\-_.!~*']*:)*)?(\([a-zA-Z0-9\-_.!~*]+\))?$/;
 
 class CInP
 {
@@ -47,7 +47,7 @@ class CInP
     }
   };
 
-  _request = ( verb, uri, data, header_map ) =>
+  _request = ( method, uri, data, header_map ) =>
   {
     if( this.auth_id !== null )
     {
@@ -56,7 +56,7 @@ class CInP
 
     const encodedData = JSON.stringify( data );
     const request = {
-      method: verb,
+      method: method,
       headers: Object.assign( {}, header_map, {
                                                 'Accept': 'application/json',
                                                 'CInP-Version': '0.9'
@@ -65,7 +65,7 @@ class CInP
 
     if( encodedData !== undefined )
     {
-      request.headers[ 'Content-Length' ] = encodedData.length.toString();
+      request.headers[ 'Content-Length'] = encodedData.length.toString();
       request.headers[ 'Content-Type' ] = 'application/json';
       request.body = encodedData;
     }
@@ -77,17 +77,28 @@ class CInP
         {
           if ( response.status < 200 || response.status >= 300 )
           {
-            this._ajax_fail( verb, uri, reject, response );
+            this._ajax_fail( method, uri, reject, response );
           }
           else
           {
-            response.json().then( ( data ) => resolve( { data: data, status: response.status, headers: response.headers } ),
-                                  ( error ) => this._ajax_fail( verb, uri, reject, error ) );
+            response.text()
+              .then( ( data ) =>
+              {
+                if( data )
+                {
+                  data = JSON.parse( data );
+                }
+                else
+                {
+                  data = null;
+                }
+                resolve( { data: data, status: response.status, headers: response.headers } );
+              }, ( error ) => this._ajax_fail( method, uri, reject, error ) );
           }
         },
         ( error ) =>
         {
-          this._ajax_fail( verb, uri, reject, error );
+          this._ajax_fail( method, uri, reject, error );
         }
       ).catch( ( err ) =>
         {
@@ -97,16 +108,16 @@ class CInP
     } );
   };
 
-  _ajax_fail = ( verb, uri, reject, response ) =>
+  _ajax_fail = ( method, uri, reject, response ) =>
   {
     if( !( response instanceof Response ) )
     {
-      console.error( 'cinp: doing "' + verb + '" on "' +  uri + '" Error: ' + response );
+      console.error( 'cinp: doing "' + method + '" on "' +  uri + '" Error: ' + response );
       reject( 'Error "' + response + '"' );
       return;
     }
 
-    console.error( 'cinp: doing "' + verb + '" on "' +  uri + '" Status: ' + response.status );
+    console.error( 'cinp: doing "' + method + '" on "' +  uri + '" Status: ' + response.status );
 
     response.text().then( ( value ) => this._ajax_fail_inner( response, value, reject ) );
   };
@@ -121,44 +132,44 @@ class CInP
     {
       // nothing
     }
-    if( response.status == 400 )
+    if( response.status === 400 )
     {
       if( typeof( data ) === 'object' )
       {
         if( 'message' in data )
         {
-          reject( 'Invalid Request', data.message );
+          reject( { reason: 'Invalid Request', detail: data.message } );
         }
         else
         {
-          reject( 'Invalid Request', data );
+          reject( { reason: 'Invalid Request', detail: data } );
         }
       }
       else
       {
-        reject( 'Invalid Request', data );
+        reject( { reason: 'Invalid Request', detail: data } );
       }
     }
-    else if( response.status == 401 )
+    else if( response.status === 401 )
     {
-      reject( 'Invalid Session' );
+      reject( { reason: 'Invalid Session' } );
     }
-    else if( response.status == 403 )
+    else if( response.status === 403 )
     {
-      reject( 'Not Authorized' );
+      reject( { reason: 'Not Authorized' } );
     }
-    else if( response.status == 404 )
+    else if( response.status === 404 )
     {
-      reject( 'Not Found' );
+      reject( { reason: 'Not Found' } );
     }
-    else if( response.status == 500 )
+    else if( response.status === 500 )
     {
       this._server_error_handler( data );
-      reject( 'Server Error' );
+      reject( { reason: 'Server Error' } );
     }
     else
     {
-      reject( data );
+      reject( { reason: data } );
     }
   };
 
@@ -186,15 +197,15 @@ class CInP
           var type = result.headers.get( 'Type' );
           var data = result.data;
 
-          if( type == 'Namespace' )
+          if( type === 'Namespace' )
           {
-            return( { type: 'namespace', name: data.name, doc: data.doc, path: data.path, version: data[ 'api-version' ], multi_uri_max: data[ 'multi-uri-max' ], namespace_list: data.namespaces, model_list: data.models } );
+            return( { type: 'namespace', name: data.name, doc: data.doc, path: data.path, version: data[ 'api-version' ], uri_max: data[ 'multi-uri-max' ], namespace_list: data.namespaces, model_list: data.models } );
           }
-          else if( type == 'Model' )
+          else if( type === 'Model' )
           {
-            return( { type: 'model', name: data.name, doc: data.doc, path: data.path, constant_list: data.constants, field_list: data.fields, action_list: data.actions, not_allowed_verbs: data[ 'not-allowed-methods' ], list_filter_list: data[ 'list-filters' ] } );
+            return( { type: 'model', name: data.name, doc: data.doc, path: data.path, constant_list: data.constants, field_list: data.fields, action_list: data.actions, not_allowed_methods: data[ 'not-allowed-metods' ], list_filters: data[ 'list-filters' ] } );
           }
-          else if( type == 'Action' )
+          else if( type === 'Action' )
           {
             return( { type: 'model', name: data.name, doc: data.doc, path: data.path, return_type: data[ 'return-type' ], static: data.static, paramaters: data.paramaters } );
           }
@@ -333,7 +344,7 @@ class CInP
 
     var uri_parts = this.splitURI( uri );
 
-    if( id_list.length == 0 )
+    if( id_list.length === 0 )
     {
       return new Promise( ( resolve, reject ) => resolve( {} ) );
     }
